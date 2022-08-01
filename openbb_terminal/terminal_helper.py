@@ -2,6 +2,7 @@
 __docformat__ = "numpy"
 
 # IMPORTATION STANDARD
+import webbrowser
 from contextlib import contextmanager
 import hashlib
 import logging
@@ -52,6 +53,11 @@ def print_goodbye():
         "or even request a feature on [cmds]https://openbb.co/request-a-feature[/cmds]\n"
     )
 
+    console.print(
+        "[bold]Fill in our 2-minute survey so we better understand how we can improve the terminal "
+        "at [cmds]https://openbb.co/survey[/cmds][/bold]\n"
+    )
+
     logger.info("END")
 
 
@@ -69,9 +75,8 @@ def update_terminal():
     """Updates the terminal by running git pull in the directory.
     Runs poetry install if needed.
     """
-
     if not WITH_GIT or obbff.LOGGING_COMMIT_HASH != "REPLACE_ME":
-        console.print("This feature is not available : Git dependencies not installed.")
+        console.print("This feature is not available: Git dependencies not installed.")
         return 0
 
     poetry_hash = sha256sum("poetry.lock")
@@ -98,31 +103,47 @@ def update_terminal():
     return 0
 
 
-def about_us():
-    """Prints an about us section"""
-    console.print(
-        "\n[green]Thanks for using OpenBB Terminal. This is our way![/green]\n"
-        + "\n"
-        + "[cyan]Website: [/cyan]https://openbb.co\n"
-        + "[cyan]Documentation: [/cyan]https://openbb.co/docs\n"
-        + "\n"
-        + "[cyan]Join our community on discord: [/cyan]https://openbb.co/discord\n"
-        + "[cyan]Follow our twitter for updates: [/cyan]https://twitter.com/openbb_finance\n"
-        + "\n"
-        + "[yellow]Partnerships:[/yellow]\n"
-        + "[cyan]FinBrain: [/cyan]https://finbrain.tech\n"
-        + "[cyan]Quiver Quantitative: [/cyan]https://www.quiverquant.com\n"
-        + "[cyan]SentimentInvestor: [/cyan]https://sentimentinvestor.com\n"
-        + "\n[red]"
-        + "DISCLAIMER: Trading in financial instruments involves high risks including the risk of losing some, "
-        + "or all, of your investment amount, and may not be suitable for all investors. Before deciding to "
-        + "trade in financial instrument you should be fully informed of the risks and costs associated with "
-        + "trading the financial markets, carefully consider your investment objectives, level of experience, "
-        + "and risk appetite, and seek professional advice where needed.\n"
-        + "The data contained in OpenBB Terminal is not necessarily accurate. OpenBB and any provider "
-        + "of the data contained in this software will not accept liability for any loss or damage "
-        + "as a result of your trading, or your reliance on the information displayed.[/red]\n"
-    )
+def open_openbb_documentation(
+    path, url="https://openbb-finance.github.io/OpenBBTerminal/", command=None
+):
+    """Opens the documentation page based on your current location within the terminal. Make exceptions for menus
+    that are considered 'common' by adjusting the path accordingly."""
+    if "ta" in path:
+        path = "terminal/common/ta/"
+    elif "ba" in path:
+        path = "terminal/common/ba/"
+    elif "qa" in path:
+        path = "terminal/common/qa/"
+    elif "pred" in path:
+        path = "terminal/common/pred/"
+    elif "keys" in path:
+        path = "#accessing-other-sources-of-data-via-api-keys"
+        command = ""
+    elif "settings" in path or "featflags" in path or "sources" in path:
+        path = "#customizing-the-terminal"
+        command = ""
+    else:
+        path = f"terminal/{path}"
+
+    if command:
+        if command in ["ta", "ba", "qa", "pred"]:
+            path = "terminal/common/"
+        elif "keys" == command:
+            path = "#accessing-other-sources-of-data-via-api-keys"
+            command = ""
+        elif "exe" == command:
+            path = "/terminal/scripts/"
+            command = ""
+        elif command in ["settings", "featflags", "sources"]:
+            path = "#customizing-the-terminal"
+            command = ""
+
+        path += command
+
+    full_url = f"{url}{path}".replace("//", "/")
+
+    webbrowser.open(full_url)
+    console.print("")
 
 
 def hide_splashscreen():

@@ -146,6 +146,7 @@ def print_rich_table(
     index_name: str = "",
     headers: Union[List[str], pd.Index] = None,
     floatfmt: Union[str, List[str]] = ".2f",
+    show_header: bool = True,
 ):
     """Prepare a table from df in rich
 
@@ -163,10 +164,12 @@ def print_rich_table(
         Titles for columns
     floatfmt: Union[str, List[str]]
         Float number formatting specs as string or list of strings. Defaults to ".2f"
+    show_header: bool
+        Whether to show the header row.
     """
 
     if obbff.USE_TABULATE_DF:
-        table = Table(title=title, show_lines=True)
+        table = Table(title=title, show_lines=True, show_header=show_header)
 
         if show_index:
             table.add_column(index_name)
@@ -517,7 +520,7 @@ def plot_view_stock(df: pd.DataFrame, symbol: str, interval: str):
     ax[1].set_xlim(df.index[0], df.index[-1])
     ax[1].yaxis.tick_right()
     ax[1].yaxis.set_label_position("right")
-    ax[1].set_ylabel("Volume (1M)")
+    ax[1].set_ylabel("Volume [1M]")
     ax[1].grid(axis="y", color="gainsboro", linestyle="-", linewidth=0.5)
     ax[1].spines["top"].set_visible(False)
     ax[1].spines["left"].set_visible(False)
@@ -950,8 +953,8 @@ def get_flair() -> str:
     """Get a flair icon"""
     flairs = {
         ":openbb": "(🦋)",
-        ":rocket": "(🚀🚀)",
-        ":diamond": "(💎💎)",
+        ":rocket": "(🚀)",
+        ":diamond": "(💎)",
         ":stars": "(✨)",
         ":baseball": "(⚾)",
         ":boat": "(⛵)",
@@ -1566,7 +1569,7 @@ def check_list_values(valid_values: List[str]):
     return check_list_values_from_valid_values_list
 
 
-def get_preferred_source(command_path: str):
+def get_ordered_list_sources(command_path: str):
     """
     Returns the preferred source for the given command. If a value is not available for the specific
     command, returns the most specific source, eventually returning the overall default source.
@@ -1614,11 +1617,8 @@ def get_preferred_source(command_path: str):
                                 return json_doc[context]["load"]
 
                     # We didn't find the next level, so flag that that command default source is missing
-                    # We decided to have these mentioned explicitly
-                    console.print(
-                        f"[red]'data_sources_default.json' file does not contain {command_path}[/red]"
-                    )
-                    return None
+                    # Which means that there aren't more than 1 source and therefore no selection is necessary
+                    return []
 
                 # Go one level deeper into the path
                 path_objects = path_objects[1:]

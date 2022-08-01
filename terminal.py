@@ -7,8 +7,8 @@ import difflib
 import logging
 import os
 import platform
-import random
 import sys
+import webbrowser
 from typing import List
 from pathlib import Path
 import dotenv
@@ -17,21 +17,23 @@ from prompt_toolkit.completion import NestedCompleter
 from prompt_toolkit.styles import Style
 from prompt_toolkit.formatted_text import HTML
 
+from openbb_terminal.common import feedparser_view
 from openbb_terminal.core.config.constants import REPO_DIR, ENV_FILE, USER_HOME
 from openbb_terminal.core.log.generation.path_tracking_file_handler import (
     PathTrackingFileHandler,
 )
 from openbb_terminal import feature_flags as obbff
 from openbb_terminal.helper_funcs import (
+    check_positive,
     get_flair,
     parse_simple_args,
+    EXPORT_ONLY_RAW_DATA_ALLOWED,
 )
 from openbb_terminal.loggers import setup_logging
 from openbb_terminal.menu import session
 from openbb_terminal.parent_classes import BaseController
-from openbb_terminal.rich_config import console, MenuText
+from openbb_terminal.rich_config import console, MenuText, translate
 from openbb_terminal.terminal_helper import (
-    about_us,
     bootup,
     check_for_updates,
     is_reset,
@@ -53,12 +55,14 @@ class TerminalController(BaseController):
     """Terminal Controller class"""
 
     CHOICES_COMMANDS = [
-        "update",
-        "about",
         "keys",
         "settings",
+        "survey",
+        "update",
         "featflags",
         "exe",
+        "guess",
+        "news",
     ]
     CHOICES_MENUS = [
         "stocks",
@@ -72,6 +76,7 @@ class TerminalController(BaseController):
         "funds",
         "alternative",
         "econometrics",
+        "sources",
     ]
 
     PATH = "/"
@@ -82,6 +87,11 @@ class TerminalController(BaseController):
         )
         if file.endswith(".openbb")
     }
+
+    GUESS_TOTAL_TRIES = 0
+    GUESS_NUMBER_TRIES_LEFT = 0
+    GUESS_SUM_SCORE = 0.0
+    GUESS_CORRECTLY = 0
 
     def __init__(self, jobs_cmds: List[str] = None):
         """Constructor"""
@@ -104,23 +114,19 @@ class TerminalController(BaseController):
     def print_help(self):
         """Print help"""
         mt = MenuText("")
-        mt.add_custom("_home_")
-        mt.add_cmd("cls")
-        mt.add_cmd("help")
-        mt.add_cmd("quit")
-        mt.add_cmd("exit")
-        mt.add_cmd("reset")
-        mt.add_raw("\n")
-        mt.add_cmd("resources")
-        mt.add_cmd("update")
+        mt.add_info("_home_")
         mt.add_cmd("about")
         mt.add_cmd("support")
+        mt.add_cmd("survey")
+        mt.add_cmd("update")
         mt.add_raw("\n")
         mt.add_info("_configure_")
         mt.add_menu("keys")
         mt.add_menu("featflags")
+        mt.add_menu("sources")
         mt.add_menu("settings")
         mt.add_raw("\n")
+        mt.add_cmd("news")
         mt.add_cmd("exe")
         mt.add_raw("\n")
         mt.add_info("_main_menu_")
@@ -139,9 +145,164 @@ class TerminalController(BaseController):
         mt.add_menu("reports")
         console.print(text=mt.menu_text, menu="Home")
 
+    def call_news(self, other_args: List[str]) -> None:
+        """Process news command"""
+        parse = argparse.ArgumentParser(
+            add_help=False,
+            prog="news",
+            description=translate("news"),
+        )
+        parse.add_argument(
+            "-t",
+            "--term",
+            dest="term",
+            default="",
+            nargs="+",
+            help="search for a term on the news",
+        )
+        parse.add_argument(
+            "-a",
+            "--article",
+            dest="article",
+            default="bloomberg",
+            nargs="+",
+            help="articles from where to get news from",
+        )
+        if other_args and "-" not in other_args[0][0]:
+            other_args.insert(0, "-t")
+        news_parser = self.parse_known_args_and_warn(
+            parse, other_args, EXPORT_ONLY_RAW_DATA_ALLOWED, limit=5
+        )
+        if news_parser:
+            feedparser_view.display_news(
+                " ".join(news_parser.term),
+                " ".join(news_parser.article),
+                news_parser.limit,
+                news_parser.export,
+            )
+
+    def call_guess(self, other_args: List[str]) -> None:
+        """Process guess command"""
+        import time
+        import json
+        import random
+
+        if self.GUESS_NUMBER_TRIES_LEFT == 0 and self.GUESS_SUM_SCORE < 0.01:
+            parser_exe = argparse.ArgumentParser(
+                add_help=False,
+                formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+                prog="guess",
+                description="Guess command to achieve task successfully.",
+            )
+            parser_exe.add_argument(
+                "-l",
+                "--limit",
+                type=check_positive,
+                help="Number of tasks to attempt.",
+                dest="limit",
+                default=1,
+            )
+            if other_args and "-" not in other_args[0][0]:
+                other_args.insert(0, "-l")
+                ns_parser_guess = parse_simple_args(parser_exe, other_args)
+
+                if self.GUESS_TOTAL_TRIES == 0:
+                    self.GUESS_NUMBER_TRIES_LEFT = ns_parser_guess.limit
+                    self.GUESS_SUM_SCORE = 0
+                    self.GUESS_TOTAL_TRIES = ns_parser_guess.limit
+
+        try:
+            with open(obbff.GUESS_EASTER_EGG_FILE) as f:
+                # Load the file as a JSON document
+                json_doc = json.load(f)
+
+                task = random.choice(list(json_doc.keys()))
+                solution = json_doc[task]
+
+                start = time.time()
+                console.print(f"\n[yellow]{task}[/yellow]\n")
+                an_input = session.prompt("GUESS / $ ")
+                time_dif = time.time() - start
+
+                # When there are multiple paths to same solution
+                if isinstance(solution, List):
+                    if an_input in solution:
+                        self.queue = an_input.split("/") + ["home"]
+                        console.print(
+                            f"\n[green]You guessed correctly in {round(time_dif, 2)} seconds![green]\n"
+                        )
+                        # If we are already counting successes
+                        if self.GUESS_TOTAL_TRIES > 0:
+                            self.GUESS_CORRECTLY += 1
+                            self.GUESS_SUM_SCORE += time_dif
+                    else:
+                        solutions_texts = "\n".join(solution)
+                        console.print(
+                            f"\n[red]You guessed wrong! The correct paths would have been:\n{solutions_texts}[/red]\n"
+                        )
+
+                # When there is a single path to the solution
+                else:
+                    if an_input == solution:
+                        self.queue = an_input.split("/") + ["home"]
+                        console.print(
+                            f"\n[green]You guessed correctly in {round(time_dif, 2)} seconds![green]\n"
+                        )
+                        # If we are already counting successes
+                        if self.GUESS_TOTAL_TRIES > 0:
+                            self.GUESS_CORRECTLY += 1
+                            self.GUESS_SUM_SCORE += time_dif
+                    else:
+                        console.print(
+                            f"\n[red]You guessed wrong! The correct path would have been:\n{solution}[/red]\n"
+                        )
+
+                # Compute average score and provide a result if it's the last try
+                if self.GUESS_TOTAL_TRIES > 0:
+
+                    self.GUESS_NUMBER_TRIES_LEFT -= 1
+                    if self.GUESS_NUMBER_TRIES_LEFT == 0 and self.GUESS_TOTAL_TRIES > 1:
+                        color = (
+                            "green"
+                            if self.GUESS_CORRECTLY == self.GUESS_TOTAL_TRIES
+                            else "red"
+                        )
+                        console.print(
+                            f"[{color}]OUTCOME: You got {int(self.GUESS_CORRECTLY)} out of"
+                            f" {int(self.GUESS_TOTAL_TRIES)}.[/{color}]\n"
+                        )
+                        if self.GUESS_CORRECTLY == self.GUESS_TOTAL_TRIES:
+                            avg = self.GUESS_SUM_SCORE / self.GUESS_TOTAL_TRIES
+                            console.print(
+                                f"[green]Average score: {round(avg, 2)} seconds![/green]\n"
+                            )
+                        self.GUESS_TOTAL_TRIES = 0
+                        self.GUESS_CORRECTLY = 0
+                        self.GUESS_SUM_SCORE = 0
+                    else:
+                        self.queue += ["guess"]
+
+        except Exception as e:
+            console.print(
+                f"[red]Failed to load guess game from file: "
+                f"{obbff.GUESS_EASTER_EGG_FILE}[/red]"
+            )
+            console.print(f"[red]{e}[/red]")
+
+    @staticmethod
+    def call_survey(_) -> None:
+        """Process survey command"""
+        webbrowser.open("https://openbb.co/survey")
+
     def call_update(self, _):
         """Process update command"""
-        self.update_success = not update_terminal()
+        if not obbff.PACKAGED_APPLICATION:
+            self.update_success = not update_terminal()
+        else:
+            console.print(
+                "Find the most recent release of the OpenBB Terminal here: "
+                "https://openbb.co/products/terminal#get-started\n"
+            )
 
     def call_keys(self, _):
         """Process keys command"""
@@ -160,10 +321,6 @@ class TerminalController(BaseController):
         from openbb_terminal.featflags_controller import FeatureFlagsController
 
         self.queue = self.load_class(FeatureFlagsController, self.queue)
-
-    def call_about(self, _):
-        """Process about command"""
-        about_us()
 
     def call_stocks(self, _):
         """Process stocks command"""
@@ -254,6 +411,12 @@ class TerminalController(BaseController):
         )
 
         self.queue = self.load_class(PortfolioController, self.queue)
+
+    def call_sources(self, _):
+        """Process sources command"""
+        from openbb_terminal.sources_controller import SourcesController
+
+        self.queue = self.load_class(SourcesController, self.queue)
 
     def call_exe(self, other_args: List[str]):
         """Process exe command"""
@@ -442,9 +605,6 @@ def terminal(jobs_cmds: List[str] = None, appName: str = "gst"):
                 print_goodbye()
                 break
 
-            if obbff.ENABLE_EXIT_AUTO_HELP and len(t_controller.queue) > 1:
-                t_controller.queue = t_controller.queue[1:]
-
             # Consume 1 element from the queue
             an_input = t_controller.queue[0]
             t_controller.queue = t_controller.queue[1:]
@@ -459,23 +619,17 @@ def terminal(jobs_cmds: List[str] = None, appName: str = "gst"):
             if session and obbff.USE_PROMPT_TOOLKIT:
                 try:
                     if obbff.TOOLBAR_HINT:
-                        random_routine = [
-                            file
-                            for file in os.listdir(
-                                os.path.join(
-                                    os.path.abspath(os.path.dirname(__file__)),
-                                    "routines",
-                                )
-                            )
-                            if file.endswith(".openbb")
-                        ]
                         an_input = session.prompt(
                             f"{get_flair()} / $ ",
                             completer=t_controller.completer,
                             search_ignore_case=True,
                             bottom_toolbar=HTML(
-                                "Execute routine scripts to automate your research workflow. "  # nosec
-                                f"E.g.: $ exe {random_routine[random.randint(0, len(random_routine) - 1)]}"
+                                '<style bg="ansiblack" fg="ansiwhite">[h]</style> help menu    '
+                                '<style bg="ansiblack" fg="ansiwhite">[q]</style> return to previous menu    '
+                                '<style bg="ansiblack" fg="ansiwhite">[e]</style> exit terminal    '
+                                '<style bg="ansiblack" fg="ansiwhite">[cmd -h]</style> '
+                                "see usage and available options    "
+                                '<style bg="ansiblack" fg="ansiwhite">[about]</style> Getting Started Documentation'
                             ),
                             style=Style.from_dict(
                                 {

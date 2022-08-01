@@ -84,6 +84,7 @@ class PredictionTechniquesController(BaseController):
             self.choices = choices
 
             choices["support"] = self.SUPPORT_CHOICES
+            choices["about"] = self.ABOUT_CHOICES
 
             self.completer = NestedCompleter.from_nested_dict(choices)
 
@@ -720,6 +721,7 @@ class PredictionTechniquesController(BaseController):
             help="Number of simulations to perform",
             dest="n_sims",
             default=100,
+            type=check_positive,
         )
         parser.add_argument(
             "--dist",

@@ -89,6 +89,7 @@ class TechnicalAnalysisController(CryptoBaseController):
             choices: dict = {c: {} for c in self.controller_choices}
 
             choices["support"] = self.SUPPORT_CHOICES
+            choices["about"] = self.ABOUT_CHOICES
 
             self.completer = NestedCompleter.from_nested_dict(choices)
 
@@ -127,7 +128,7 @@ class TechnicalAnalysisController(CryptoBaseController):
         mt.add_cmd("obv")
         mt.add_info("_custom_")
         mt.add_cmd("fib")
-        console.print(text=mt.menu_text, menu="Stocks - Technical Analysis")
+        console.print(text=mt.menu_text, menu="Cryptocurrency - Technical Analysis")
 
     def custom_reset(self):
         """Class specific component of reset command"""
