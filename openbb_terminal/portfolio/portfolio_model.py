@@ -1014,6 +1014,33 @@ class PortfolioModel:
 
         try:
             console.print(" Preprocessing orderbook: ", end="")
+
+            # if optional fields not in the orderbook add missing
+            optional_fields = [
+                "Sector",
+                "Industry",
+                "Country",
+                "Region",
+                "Fees",
+                "Premium",
+            ]
+            if not set(optional_fields).issubset(set(self.__orderbook.columns)):
+                for field in optional_fields:
+                    if field not in self.__orderbook.columns:
+                        self.__orderbook[field] = np.nan
+
+            # if optional fields for stock data has missing datapoints, fill them
+            if (
+                self.__orderbook.loc[
+                    self.__orderbook["Type"] == "STOCK",
+                    optional_fields,
+                ]
+                .isnull()
+                .values.any()
+            ):
+                # if any fields is empty for Stocks (overwrites any info there)
+                self.load_company_data()
+
             # Convert Date to datetime
             self.__orderbook["Date"] = pd.to_datetime(self.__orderbook["Date"])
             console.print(".", end="")
@@ -1079,34 +1106,6 @@ class PortfolioModel:
             self.inception_date = self.__orderbook["Date"][0]
             console.print(".", end="")
 
-            # Populate fields Sector, Industry and Country
-            if not (
-                {"Sector", "Industry", "Country", "Region"}.issubset(
-                    set(self.__orderbook.columns)
-                )
-            ):
-                # if fields not in the orderbook add missing
-                if "Sector" not in self.__orderbook.columns:
-                    self.__orderbook["Sector"] = np.nan
-                if "Industry" not in self.__orderbook.columns:
-                    self.__orderbook["Industry"] = np.nan
-                if "Country" not in self.__orderbook.columns:
-                    self.__orderbook["Country"] = np.nan
-                if "Region" not in self.__orderbook.columns:
-                    self.__orderbook["Region"] = np.nan
-
-                self.load_company_data()
-            elif (
-                self.__orderbook.loc[
-                    self.__orderbook["Type"] == "STOCK",
-                    ["Sector", "Industry", "Country", "Region"],
-                ]
-                .isnull()
-                .values.any()
-            ):
-                # if any fields is empty for Stocks (overwrites any info there)
-                self.load_company_data()
-
         except Exception:
             console.print("\nCould not preprocess orderbook.")
 
@@ -1165,14 +1164,19 @@ class PortfolioModel:
         # Set current price of benchmark
         self.benchmark_trades["Last price"] = self.benchmark_historical_prices[-1]
         self.benchmark_trades[["Benchmark Quantity", "Trade price"]] = float(0)
-
         # Iterate over orderbook to replicate trades on benchmark
         for index, trade in self.__orderbook.iterrows():
             # Select date to search (if not in historical prices, get closest value)
             if trade["Date"] not in self.benchmark_historical_prices.index:
-                date = self.benchmark_historical_prices.index.searchsorted(
+                found_date = self.benchmark_historical_prices.index.searchsorted(
                     trade["Date"]
                 )
+                # Fix error if trade was today and there are no historical price data rows
+                if self.benchmark_historical_prices.index.isin([found_date]).any():
+                    date = found_date
+                else:
+                    # If no historical price data, use last row
+                    date = self.benchmark_historical_prices.index[-1]
             else:
                 date = trade["Date"]
 
