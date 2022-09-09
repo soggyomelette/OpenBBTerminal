@@ -10,7 +10,8 @@ from ast import literal_eval
 from datetime import datetime
 from typing import List
 
-import papermill as pm
+
+from papermill.execute import execute_notebook
 from prompt_toolkit.completion import NestedCompleter
 
 from openbb_terminal import feature_flags as obbff
@@ -214,29 +215,35 @@ class ReportController(BaseController):
 
             d_report_params["report_name"] = notebook_output
 
-            result = pm.execute_notebook(
-                notebook_template + ".ipynb",
-                notebook_output + ".ipynb",
-                parameters=d_report_params,
-                kernel_name="python3",
-            )
-
-            if not result["metadata"]["papermill"]["exception"]:
-                if obbff.OPEN_REPORT_AS_HTML:
-                    report_output_path = os.path.join(
-                        os.path.abspath(os.path.join(".")), notebook_output + ".html"
-                    )
-                    print(report_output_path)
-                    webbrowser.open(f"file://{report_output_path}")
-
-                console.print("")
-                console.print(
-                    "Exported: ",
-                    os.path.join(
-                        os.path.abspath(os.path.join(".")), notebook_output + ".html"
-                    ),
-                    "\n",
+            try:
+                result = execute_notebook(
+                    notebook_template + ".ipynb",
+                    notebook_output + ".ipynb",
+                    parameters=d_report_params,
+                    kernel_name="python3",
                 )
-            else:
-                console.print("[red]\nParameter provided is not valid.\n[/red]")
+            except Exception as e:
+                print(e)
+
+            try:
+                if not result["metadata"]["papermill"]["exception"]:
+                    if obbff.OPEN_REPORT_AS_HTML:
+                        report_output_path = os.path.join(
+                            os.path.abspath(os.path.join(".")), notebook_output + ".html"
+                        )
+                        print(report_output_path)
+                        webbrowser.open(f"file://{report_output_path}")
+
+                    console.print("")
+                    console.print(
+                        "Exported: ",
+                        os.path.join(
+                            os.path.abspath(os.path.join(".")), notebook_output + ".html"
+                        ),
+                        "\n",
+                    )
+                else:
+                    console.print("[red]\nParameter provided is not valid.\n[/red]")
+            except Exception as e2:
+                print(e2)
         return self.queue
